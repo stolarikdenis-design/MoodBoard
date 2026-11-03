@@ -175,3 +175,41 @@ export function tapesFor(box, short) {
   }
   return out;
 }
+
+/**
+ * Mřížka jako kontaktní arch: stejně velká políčka s tenkou mezerou na tmavém panelu,
+ * poslední políčko je štítek s názvem. Počet sloupců se vybere tak, aby tvar desky
+ * byl co nejblíž zvolenému formátu. Výška desky vychází z mřížky.
+ */
+export function layoutGrid(items, { format = '4:5', ratio = '3:2' } = {}) {
+  const W = 1;
+  const target = 1 / formatAspect(format);
+  // Políčka mají orientaci, která mezi fotkami převládá (většinou na výšku).
+  const portrait = items.filter((i) => i.orient !== 'l').length >= items.length / 2;
+  const cellAspect = aspectOf(ratio, portrait ? 'p' : 'l');
+  const pad = 0.025;
+  const gap = 0.007;
+  const n = items.length + 1; // + štítek
+  let best = null;
+  for (let cols = 1; cols <= 8; cols++) {
+    const rows = Math.ceil(n / cols);
+    const cw = (W - pad * 2 - gap * (cols - 1)) / cols;
+    const ch = cw / cellAspect;
+    const H = pad * 2 + rows * ch + gap * (rows - 1);
+    // Prázdná políčka na konci se počítají jako drobná vada, ať mřížka nevypadá děravě.
+    const empty = rows * cols - n;
+    const score = Math.abs(Math.log(H / target)) + empty * 0.03;
+    if (!best || score < best.score) best = { cols, rows, cw, ch, H, score };
+  }
+  const { cols, cw, ch, H } = best;
+  const at = (i) => ({ x: pad + (i % cols) * (cw + gap), y: pad + Math.floor(i / cols) * (ch + gap), w: cw, h: ch });
+  // Štítek vyplní zbytek posledního řádku, ať mřížka nemá díry.
+  const label = at(items.length);
+  label.w = W - pad - label.x;
+  return {
+    W, H, cols, cellAspect,
+    cells: items.map((it, i) => ({ id: it.id, ...at(i) })),
+    label,
+    radius: 0.022,
+  };
+}

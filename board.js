@@ -1,5 +1,5 @@
 // Moodboard: koláž na obrazovce (DOM) i v exportu (canvas). Obojí z jednoho rozložení a stejných textur pásky.
-import { aspectOf, cropRect, formatAspect, layoutCollage, seeded, tapesFor } from './layout.js';
+import { aspectOf, cropRect, formatAspect, layoutCollage, layoutGrid, seeded, tapesFor } from './layout.js';
 import { imageUrl } from './db.js';
 
 const TYPE = '"Inter", system-ui, sans-serif';
@@ -154,6 +154,7 @@ function el(tag, cls, style) {
  * Vrací funkci, která vykreslení zruší.
  */
 export function mountBoard(container, shoot, { onPick } = {}) {
+  if (styleOf(shoot) === 'grid') return mountGrid(container, shoot, { onPick });
   const board = el('div', 'board');
   board.style.aspectRatio = String(formatAspect(shoot.format));
   container.replaceChildren(board);
@@ -242,6 +243,7 @@ function roundRect(ctx, x, y, w, h, r) {
 
 /** Vyrenderuje moodboard do PNG; delší strana má `long` pixelů. */
 export async function renderBoardImage(shoot, { long = 2400 } = {}) {
+  if (styleOf(shoot) === 'grid') return renderGridImage(shoot, { long });
   await document.fonts.load(`40px ${TYPE}`).catch(() => {});
   const aspect = formatAspect(shoot.format);
   const S = aspect >= 1 ? long : Math.round(long * aspect); // pixely na šířku desky
@@ -310,5 +312,117 @@ export async function renderBoardImage(shoot, { long = 2400 } = {}) {
     ctx.fillText(text, L.th * 0.45 * S, 0);
     ctx.restore();
   }
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+}
+
+// ---------- Mřížka (kontaktní arch na tmavém panelu) ----------
+
+export const styleOf = (shoot) => shoot.style ?? 'grid';
+const GRID_BG = '#0E0E0E';
+const LABEL_BG = '#1C1C1C';
+
+/** Podtitulek štítku: model a datum. */
+export function gridSubtitle(shoot) {
+  return [shoot.model, fmtDate(shoot.date)].filter(Boolean).join(' · ');
+}
+
+function mountGrid(container, shoot, { onPick } = {}) {
+  const board = el('div', 'board grid');
+  container.replaceChildren(board);
+  let last = 0;
+  async function draw() {
+    const S = board.clientWidth || container.clientWidth;
+    if (!S || S === last) return;
+    last = S;
+    const items = shoot.board ?? [];
+    const g = layoutGrid(items, { format: shoot.format, ratio: shoot.ratio });
+    board.style.aspectRatio = String(g.W / g.H);
+    board.style.borderRadius = `${(g.radius * S).toFixed(1)}px`;
+    const px = (v) => `${(v * S).toFixed(2)}px`;
+    const byId = new Map(items.map((it) => [it.id, it]));
+    const nodes = await Promise.all(g.cells.map(async (c, i) => {
+      const it = byId.get(c.id);
+      const cell = el('button', 'cell', { left: px(c.x), top: px(c.y), width: px(c.w), height: px(c.h) });
+      cell.type = 'button';
+      cell.dataset.id = it.id;
+      cell.setAttribute('aria-label', `Fotka ${i + 1}`);
+      const pos = `${(it.fx ?? 0.5) * 100}% ${(it.fy ?? 0.5) * 100}%`;
+      const img = el('img', 'shot', { objectPosition: pos, transformOrigin: pos, transform: `scale(${it.zoom ?? 1})` });
+      img.alt = '';
+      img.draggable = false;
+      img.src = await imageUrl(it.imageId);
+      cell.append(img);
+      cell.addEventListener('click', () => onPick?.(it.id));
+      return cell;
+    }));
+    const L = g.label;
+    const label = el('div', 'grid-label', { left: px(L.x), top: px(L.y), width: px(L.w), height: px(L.h), padding: px(L.h * 0.06) });
+    const t = el('strong', '', { fontSize: px(Math.min(L.h * 0.08, 0.04)) });
+    t.textContent = shoot.title || 'Moodboard';
+    const sub = el('span', '', { fontSize: px(Math.min(L.h * 0.047, 0.022)) });
+    sub.textContent = gridSubtitle(shoot);
+    label.append(t, sub);
+    if (!items.length) {
+      const empty = el('p', 'board-empty');
+      empty.textContent = 'Prázdný moodboard. Přidej screenshoty.';
+      nodes.push(empty);
+    }
+    board.replaceChildren(...nodes, label);
+  }
+  const ro = new ResizeObserver(() => draw());
+  ro.observe(container);
+  draw();
+  return () => ro.disconnect();
+}
+
+function wrapLines(ctx, text, maxW) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const t = line ? `${line} ${w}` : w;
+    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+async function renderGridImage(shoot, { long = 2400 } = {}) {
+  await document.fonts.load(`700 40px ${TYPE}`).catch(() => {});
+  const items = shoot.board ?? [];
+  const g = layoutGrid(items, { format: shoot.format, ratio: shoot.ratio });
+  const S = g.W >= g.H ? long : Math.round(long * (g.W / g.H));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(g.W * S);
+  canvas.height = Math.round(g.H * S);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = GRID_BG;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const byId = new Map(items.map((it) => [it.id, it]));
+  for (const c of g.cells) {
+    const it = byId.get(c.id);
+    const src = await imageUrl(it.imageId);
+    const img = src ? await loadImg(src).catch(() => null) : null;
+    if (!img) continue;
+    const r = cropRect(img.naturalWidth, img.naturalHeight, g.cellAspect, it.fx, it.fy, it.zoom ?? 1);
+    ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, c.x * S, c.y * S, c.w * S, c.h * S);
+  }
+  const L = g.label;
+  ctx.fillStyle = LABEL_BG;
+  ctx.fillRect(L.x * S, L.y * S, L.w * S, L.h * S);
+  const padL = L.h * 0.06 * S;
+  const tSize = Math.min(L.h * 0.08, 0.04) * S;
+  const sSize = Math.min(L.h * 0.047, 0.022) * S;
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `400 ${sSize}px ${TYPE}`;
+  const subLines = wrapLines(ctx, gridSubtitle(shoot), L.w * S - padL * 2);
+  ctx.font = `700 ${tSize}px ${TYPE}`;
+  const titleLines = wrapLines(ctx, (shoot.title || 'Moodboard').toUpperCase(), L.w * S - padL * 2);
+  let y = (L.y + L.h) * S - padL - subLines.length * sSize * 1.35;
+  ctx.fillStyle = '#ffffff';
+  for (const [i, line] of titleLines.entries()) ctx.fillText(line, L.x * S + padL, y - (titleLines.length - 1 - i) * tSize * 1.1 - sSize * 0.6);
+  ctx.font = `400 ${sSize}px ${TYPE}`;
+  ctx.fillStyle = '#A3A3A3';
+  for (const [i, line] of subLines.entries()) ctx.fillText(line, L.x * S + padL, y + (i + 1) * sSize * 1.35);
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
 }

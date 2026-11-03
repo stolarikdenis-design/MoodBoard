@@ -19,22 +19,25 @@ test('focení: moodboard ořízne screenshot přesně na poměr fotek a přilep�
   await page.getByLabel('Název focení').fill('Podzimní les');
   await page.getByLabel('Model').fill('Testovací model');
   await page.getByRole('link', { name: 'Moodboard' }).click();
-  await expect(page.locator('.board-label')).toContainText('Podzimní les');
+  await expect(page.locator('.grid-label')).toContainText('Podzimní les');
 
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Fotky' }).click();
   await (await chooser).setFiles(await shot());
-  const print = page.locator('.photo').first();
+  const print = page.locator('.board [data-id]').first();
   await expect(print).toBeVisible();
-  await expect(print.locator('.tape').first()).toBeAttached();
 
   const ratio = async () => print.locator('img.shot').evaluate((img) => img.offsetWidth / img.offsetHeight);
   expect(await ratio()).toBeCloseTo(2 / 3, 2); // screenshot na výšku → 3:2 na výšku
   await page.getByRole('combobox', { name: 'Fotky' }).selectOption('1:1');
   await expect.poll(ratio).toBeCloseTo(1, 2);
 
+  // Koláž s páskou jako druhý vzhled.
+  await page.getByRole('button', { name: 'Koláž s páskou' }).click();
+  await expect(page.locator('.photo .tape').first()).toBeAttached();
+  await expect(page.locator('.board-label')).toContainText('Podzimní les');
   await page.reload();
-  await expect(page.locator('.photo')).toHaveCount(1); // data přežijí znovunačtení
+  await expect(page.locator('.board [data-id]')).toHaveCount(1); // data přežijí znovunačtení
   expect(errors).toEqual([]);
 });
 
@@ -88,7 +91,7 @@ test('focení: screenshot se ořízne na fotku a Claude z moodboardu připraví 
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Fotky' }).click();
   await (await chooser).setFiles({ name: 'ig.png', mimeType: 'image/png', buffer: screen });
-  await expect(page.locator('.photo')).toHaveCount(1);
+  await expect(page.locator('.board [data-id]')).toHaveCount(1);
   // Oříznutá fotka má poměr samotné fotky (300 : 380), ne celého screenshotu.
   const item = await page.evaluate(async () => {
     const db = await import('./db.js');
@@ -125,7 +128,7 @@ test('focení: odpověď z appky Claude (zdarma) se vloží a rozloží do plán
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Fotky' }).click();
   await (await chooser).setFiles({ name: 'a.png', mimeType: 'image/png', buffer: screen });
-  await expect(page.locator('.photo')).toHaveCount(1);
+  await expect(page.locator('.board [data-id]')).toHaveCount(1);
   await page.getByRole('button', { name: 'Zdarma přes appku Claude' }).click();
   await page.getByLabel('Odpověď od Claude').fill('```json\n{"mood":"Klidná","light":"Okno","colors":"Pastel","poses":[{"title":"U okna","how":"Opřená o rám","photo":1,"props":[]}],"outfit":["Svetr"],"props":[],"places":[],"watch":[]}\n```');
   await page.getByRole('button', { name: 'Použít odpověď' }).click();

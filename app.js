@@ -1,7 +1,7 @@
 // Focení: plánovač focení pro Denise. Moodboard, plán, checklisty, inventář a lokality. Data jen v telefonu.
 import * as db from './db.js';
-import { mountBoard, renderBoardImage } from './board.js';
-import { FORMATS, RATIOS, aspectOf } from './layout.js';
+import { mountBoard, renderBoardImage, styleOf } from './board.js';
+import { FORMATS, RATIOS, aspectOf, layoutGrid } from './layout.js';
 import { detectPhotoRect } from './autocrop.js';
 import { MAX_PHOTOS, QUALITIES, errorMessage, getApiKey, getQuality, manualPrompt, parsePlanText, planFromBoard, setApiKey, setQuality, shrinkForAi } from './ai.js';
 
@@ -374,6 +374,7 @@ async function shootView(id, tab = 'moodboard') {
 }
 
 function moodboardTab(shoot, saveNow) {
+  const grid = styleOf(shoot) === 'grid';
   const holder = h('div', { class: 'board-holder' });
   const card = h('div', { class: 'page' });
   const redraw = () => {
@@ -449,16 +450,21 @@ function moodboardTab(shoot, saveNow) {
 
   return h('section', { class: 'mood' },
     h('div', { class: 'board-tools' },
+      h('div', { class: 'segmented small style-pick', role: 'group', 'aria-label': 'Vzhled moodboardu' },
+        [['grid', 'Mřížka'], ['collage', 'Koláž s páskou']].map(([k, label]) => h('button', {
+          type: 'button', 'aria-pressed': String(styleOf(shoot) === k),
+          onclick: async () => { shoot.style = k; await saveNow(); render(); },
+        }, label))),
       select('Deska', shoot.format ?? '16:9', Object.entries(FORMATS).map(([k, f]) => [k, f.label]), (v) => (shoot.format = v)),
       select('Fotky', shoot.ratio, Object.keys(RATIOS).map((r) => [r, r]), (v) => (shoot.ratio = v)),
-      h('button', { type: 'button', class: 'btn small', onclick: () => change(() => { shoot.seed = (shoot.seed ?? 0) + 1; for (const b of shoot.board) delete b.top; }) }, icon('shuffle'), 'Zamíchat'),
+      grid ? null : h('button', { type: 'button', class: 'btn small', onclick: () => change(() => { shoot.seed = (shoot.seed ?? 0) + 1; for (const b of shoot.board) delete b.top; }) }, icon('shuffle'), 'Zamíchat'),
       zoomBtn,
-      h('label', { class: 'toggle' },
+      grid ? null : h('label', { class: 'toggle' },
         h('input', { type: 'checkbox', checked: shoot.showLabel !== false, onchange: (e) => change(() => (shoot.showLabel = e.target.checked)) }),
         h('span', {}, 'štítek s názvem')),
     ),
     holder,
-    h('p', { class: 'hint' }, 'Klepni na fotku: posuneš a přiblížíš výřez, otočíš ji nebo ji dáš navrch.'),
+    h('p', { class: 'hint' }, grid ? 'Klepni na fotku: posuneš a přiblížíš výřez nebo změníš pořadí.' : 'Klepni na fotku: posuneš a přiblížíš výřez, otočíš ji nebo ji dáš navrch.'),
     card,
     h('div', { class: 'dock' },
       h('button', { type: 'button', class: 'btn primary', onclick: addPhotos }, icon('plus'), 'Fotky'),
@@ -468,13 +474,14 @@ function moodboardTab(shoot, saveNow) {
 }
 
 async function photoSheet(shoot, pid, saveNow, redraw) {
+  const grid = styleOf(shoot) === 'grid';
   const it = shoot.board.find((b) => b.id === pid);
   if (!it) return;
   const src = await db.imageUrl(it.imageId);
   const img = h('img', { src, alt: '', draggable: false });
   const frame = h('div', { class: 'crop-frame' }, img, h('span', { class: 'crop-hint' }, 'táhni prstem'));
   const apply = () => {
-    const a = aspectOf(shoot.ratio, it.orient);
+    const a = grid ? layoutGrid(shoot.board, { format: shoot.format, ratio: shoot.ratio }).cellAspect : aspectOf(shoot.ratio, it.orient);
     frame.style.aspectRatio = String(a);
     frame.style.width = `min(100%, ${(52 * a).toFixed(2)}dvh)`;
     img.style.objectPosition = `${it.fx * 100}% ${it.fy * 100}%`;
@@ -537,10 +544,21 @@ async function photoSheet(shoot, pid, saveNow, redraw) {
     },
   }, it.full ? 'Oříznout na fotku' : 'Celý screenshot') : null;
 
+  const move = async (d) => {
+    const i = shoot.board.indexOf(it);
+    const j = i + d;
+    if (j < 0 || j >= shoot.board.length) return;
+    [shoot.board[i], shoot.board[j]] = [shoot.board[j], shoot.board[i]];
+    await saveNow();
+    toast(d < 0 ? 'Posunuto dřív.' : 'Posunuto později.');
+  };
   const s = sheet('Fotka', [
     frame,
-    orient,
+    grid ? null : orient,
     zoom,
+    grid ? h('div', { class: 'row-actions start' },
+      h('button', { type: 'button', class: 'btn small', onclick: () => move(-1) }, '← Dřív'),
+      h('button', { type: 'button', class: 'btn small', onclick: () => move(1) }, 'Později →')) : null,
     h('div', { class: 'row-actions' },
       h('button', {
         type: 'button', class: 'btn danger',
@@ -553,7 +571,8 @@ async function photoSheet(shoot, pid, saveNow, redraw) {
         },
       }, 'Odlepit'),
       swap,
-      h('button', { type: 'button', class: 'btn primary', onclick: async () => { it.top = Date.now(); await saveNow(); s.close(); } }, 'Dát navrch'),
+      grid ? h('button', { type: 'button', class: 'btn primary', onclick: () => s.close() }, 'Hotovo')
+        : h('button', { type: 'button', class: 'btn primary', onclick: async () => { it.top = Date.now(); await saveNow(); s.close(); } }, 'Dát navrch'),
     ),
   ], { onClose: redraw });
 }

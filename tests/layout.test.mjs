@@ -66,3 +66,26 @@ test('každá fotka je přilepená aspoň jedním kusem pásky', () => {
   }
   assert.deepEqual([...kinds].sort(), ['clear', 'masking'], 'krepová i průhledná páska');
 });
+
+test('mřížka: stejná políčka s poměrem fotek, bez překryvu, štítek na konci', async () => {
+  const { layoutGrid } = await import('../layout.js');
+  for (const n of [1, 4, 12, 35]) {
+    const items = Array.from({ length: n }, (_, i) => ({ id: `g${i}`, orient: 'p' }));
+    const g = layoutGrid(items, { format: '16:9', ratio: '3:2' });
+    assert.equal(g.cells.length, n);
+    for (const c of g.cells) assert.ok(Math.abs(c.w / c.h - 2 / 3) < 1e-9, 'políčko na výšku 2:3');
+    assert.ok(Math.abs(g.label.x + g.label.w - (g.W - 0.025)) < 1e-9, 'štítek dojde k pravému okraji');
+    for (const c of [...g.cells, g.label]) {
+      assert.ok(c.x >= 0 && c.x + c.w <= g.W + 1e-9 && c.y >= 0 && c.y + c.h <= g.H + 1e-9);
+    }
+    const all = [...g.cells, g.label];
+    for (const a of all) for (const b of all) {
+      if (a === b) continue;
+      assert.ok(a.x + a.w <= b.x + 1e-9 || b.x + b.w <= a.x + 1e-9 || a.y + a.h <= b.y + 1e-9 || b.y + b.h <= a.y + 1e-9, 'políčka se nepřekrývají');
+    }
+  }
+  const wide = layoutGrid(Array.from({ length: 34 }, (_, i) => ({ id: i, orient: 'p' })), { format: '16:9' });
+  assert.ok(wide.cols >= 6, `široká deska má hodně sloupců (${wide.cols})`);
+  const tall = layoutGrid(Array.from({ length: 34 }, (_, i) => ({ id: i, orient: 'p' })), { format: '9:16' });
+  assert.ok(tall.cols < wide.cols, 'story má méně sloupců');
+});
