@@ -1,0 +1,15 @@
+{
+  "name": "foceni",
+  "private": true,
+  "type": "module",
+  "description": "Plánovač focení pro telefon: moodboard, plán, checklisty, inventář a lokality.",
+  "scripts": {
+    "dev": "node scripts/serve.mjs . 4300",
+    "test": "node --test tests/*.test.mjs && playwright test",
+    "test:unit": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "sharp": "0.35.5"
+  }
+}
