@@ -3,7 +3,7 @@ import * as db from './db.js';
 import { mountBoard, renderBoardImage } from './board.js';
 import { FORMATS, RATIOS, aspectOf } from './layout.js';
 import { detectPhotoRect } from './autocrop.js';
-import { MAX_PHOTOS, errorMessage, getApiKey, planFromBoard, setApiKey } from './ai.js';
+import { MAX_PHOTOS, QUALITIES, errorMessage, getApiKey, getQuality, manualPrompt, parsePlanText, planFromBoard, setApiKey, setQuality, shrinkForAi } from './ai.js';
 
 const L = window.L;
 const HOME = [50.0343, 15.7812]; // Pardubice
@@ -60,7 +60,8 @@ function toast(text) {
   setTimeout(() => t.remove(), 2600);
 }
 
-function setTop(title, { back, actions = [] } = {}) {
+function setTop(title, { back, actions = [], small = false } = {}) {
+  topbar.classList.toggle('small', small);
   topbar.replaceChildren(...[
     back ? iconBtn('back', 'Zpět', () => (location.hash = back)) : null,
     h('h1', {}, title),
@@ -174,6 +175,11 @@ const fmtDate = (d) => {
   const [y, m, day] = d.split('-').map(Number);
   return new Date(y, m - 1, day).toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
 };
+const fmtShort = (d) => {
+  if (!d) return '';
+  const [y, m, day] = d.split('-').map(Number);
+  return `${day}. ${m}. ${y}`;
+};
 const today = () => new Date().toISOString().slice(0, 10);
 
 const navLinks = (lat, lng) => h('div', { class: 'nav-links' },
@@ -250,19 +256,23 @@ function newShoot() {
 
 // ---------- Seznam s odškrtáváním (pózy, s sebou, hlídat) ----------
 
-function checklist(list, save, { placeholder, extra, thumb } = {}) {
-  const ul = h('ul', { class: 'checklist' });
+function checklist(list, save, { placeholder, extra, thumb, numbered } = {}) {
+  const ul = h('ul', { class: `checklist${numbered ? ' numbered' : ''}` });
   const count = h('span', { class: 'count' });
   const refresh = () => {
     const done = list.filter((i) => i.done).length;
     count.textContent = list.length ? `${done}/${list.length}` : '';
+    // Číslované pózy (01, 02…) se po přidání nebo odebrání přečíslují.
+    if (numbered) ul.querySelectorAll('.num').forEach((n, i) => (n.textContent = String(i + 1).padStart(2, '0')));
   };
   const row = (it) => {
+    const box = h('input', {
+      type: 'checkbox', checked: it.done, 'aria-label': 'Hotovo',
+      class: numbered ? 'sr-only' : null,
+      onchange: (e) => { it.done = e.target.checked; li.classList.toggle('done', it.done); refresh(); save(); },
+    });
     const li = h('li', { class: it.done ? 'done' : '' },
-      h('input', {
-        type: 'checkbox', checked: it.done, 'aria-label': 'Hotovo',
-        onchange: (e) => { it.done = e.target.checked; li.classList.toggle('done', it.done); refresh(); save(); },
-      }),
+      numbered ? h('label', { class: 'num-check', title: 'Odfoceno' }, box, h('span', { class: 'num' })) : box,
       thumb?.(it) ?? null,
       h('div', { class: 'item-body' },
         h('textarea', { class: 'item-text', rows: 1, value: it.text, 'aria-label': 'Text položky', oninput: (e) => { it.text = e.target.value.replace(/\n/g, ' '); save(); } }),
@@ -340,7 +350,8 @@ async function shootView(id, tab = 'moodboard') {
   // Ukládá hned: IndexedDB drží pořadí transakcí, takže přepnutí záložky přečte už uloženou verzi.
   const save = () => db.put('shoots', shoot);
 
-  setTop(shoot.title || 'Nové focení', {
+  setTop('Focení', {
+    small: true,
     back: '#/',
     actions: [iconBtn('trash', 'Smazat focení', () => confirmSheet('Smazat celé focení?', async () => {
       for (const b of shoot.board) { await db.deleteImage(b.imageId); if (b.origId) await db.deleteImage(b.origId); }
@@ -357,7 +368,9 @@ async function shootView(id, tab = 'moodboard') {
   if (tab === 'plan') body = planTab(shoot, places, save);
   else if (tab === 'checklist') body = await checklistTab(shoot, save);
   else body = moodboardTab(shoot, () => db.put('shoots', shoot));
-  view.replaceChildren(seg, body);
+  const meta = () => [shoot.model, fmtShort(shoot.date), shoot.time, places.find((p) => p.id === shoot.placeId)?.name].filter(Boolean).join(' · ');
+  const hero = h('div', { class: 'hero' }, h('h1', {}, shoot.title || 'Nové focení'), h('p', { class: 'meta' }, meta()));
+  view.replaceChildren(hero, seg, body);
 }
 
 function moodboardTab(shoot, saveNow) {
@@ -550,14 +563,72 @@ async function photoSheet(shoot, pid, saveNow, redraw) {
 /** Karta s tlačítkem „Připravit z moodboardu“; po doběhnutí překreslí stránku. */
 function prepareCard(shoot, save) {
   const n = shoot.board?.length ?? 0;
-  const btn = h('button', { type: 'button', class: 'btn primary wide', onclick: () => runPrepare(shoot, save, btn) }, icon('spark'),
-    shoot.ai ? 'Připravit znovu z moodboardu' : 'Připravit z moodboardu');
+  const btn = h('button', { type: 'button', class: 'btn primary', onclick: () => runPrepare(shoot, save, btn) }, icon('spark'),
+    shoot.ai ? 'Připravit znovu' : 'Připravit');
+  const free = h('button', { type: 'button', class: 'btn', onclick: () => manualSheet(shoot, save) }, 'Zdarma přes appku Claude');
+  const q = QUALITIES[getQuality()];
   return h('div', { class: 'prepare' },
+    h('h2', { class: 'prepare-title' }, 'Připravit focení z moodboardu'),
     h('p', {}, n
       ? `Claude projde ${Math.min(n, MAX_PHOTOS)} ${n === 1 ? 'fotku' : 'fotek'} z moodboardu a připraví pózy, rekvizity, oblečení, světlo a vhodná místa.`
       : 'Nejdřív nahraj do moodboardu screenshoty. Podle nich se pak připraví pózy, rekvizity, oblečení a místa.'),
-    n ? btn : null,
+    n ? h('div', { class: 'prepare-actions' }, btn, free) : null,
+    n ? h('p', { class: 'prepare-note' }, `${q.label}: ${q.note}. Změníš v Nastavení.`) : null,
   );
+}
+
+/** Zdarma: fotky a zadání se pošlou do appky Claude (předplatné), odpověď se vloží zpátky. */
+async function manualSheet(shoot, save) {
+  const [props, places] = await Promise.all([db.all('props'), db.all('places')]);
+  const items = shoot.board.slice(0, MAX_PHOTOS);
+  const prompt = manualPrompt({ shoot, props, places, count: items.length });
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(prompt); toast('Zadání je zkopírované.'); } catch { toast('Zkopírovat nešlo, označ text ručně.'); }
+  };
+  const shareBtn = h('button', {
+    type: 'button', class: 'btn primary wide',
+    onclick: async () => {
+      shareBtn.disabled = true;
+      try {
+        const files = [];
+        for (const [i, b] of items.entries()) {
+          const blob = await db.imageBlob(b.imageId);
+          if (blob) files.push(new File([await shrinkForAi(blob, 1024)], `fotka-${String(i + 1).padStart(2, '0')}.jpg`, { type: 'image/jpeg' }));
+        }
+        await navigator.clipboard?.writeText(prompt).catch(() => {});
+        if (navigator.canShare?.({ files })) await navigator.share({ files, text: prompt }).catch(() => {});
+        else toast('Sdílení tu nejde. Zadání je zkopírované, fotky do Claude přidej ručně.');
+      } finally { shareBtn.disabled = false; }
+    },
+  }, icon('share'), `Poslat ${items.length} fotek a zadání do Claude`);
+  let answer = '';
+  sheet('Zdarma přes appku Claude', [
+    h('ol', { class: 'steps' },
+      h('li', {}, 'Klepni na tlačítko níž a vyber appku Claude. Fotky se přiloží a zadání se zkopíruje.'),
+      h('li', {}, 'V Claude zadání vlož (podrž a Vložit), pokud tam ještě není, a odešli.'),
+      h('li', {}, 'Celou odpověď zkopíruj a vlož sem dolů.')),
+    shareBtn,
+    h('button', { type: 'button', class: 'btn wide', onclick: copy }, 'Jen zkopírovat zadání'),
+    field('Odpověď od Claude', h('textarea', { rows: 6, placeholder: 'sem vlož odpověď', oninput: (e) => (answer = e.target.value) })),
+    h('div', { class: 'row-actions' }, h('button', {
+      type: 'button', class: 'btn primary',
+      onclick: async () => {
+        try {
+          const plan = parsePlanText(answer);
+          const photos = items.map((b) => ({ id: b.id }));
+          applyPlan(shoot, plan, { photos, props, places });
+          await save();
+          document.querySelector('dialog.sheet')?.close();
+          toast('Hotovo, plán je připravený.');
+          const planUrl = `#/foceni/${shoot.id}/plan`;
+          if (location.hash === planUrl) render();
+          else location.hash = planUrl;
+        } catch (e) {
+          toast(e instanceof SyntaxError ? 'Odpověď nešla přečíst. Vlož ji celou.' : e.message);
+        }
+      },
+    }, 'Použít odpověď')),
+  ]);
 }
 
 const norm = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
@@ -648,7 +719,7 @@ function viewer(blob) {
 }
 
 function planTab(shoot, places, save) {
-  const input = (key, props = {}) => h('input', { value: shoot[key] ?? '', ...props, oninput: (e) => { shoot[key] = e.target.value; save(); if (key === 'title') topbar.querySelector('h1').textContent = e.target.value || 'Nové focení'; } });
+  const input = (key, props = {}) => h('input', { value: shoot[key] ?? '', ...props, oninput: (e) => { shoot[key] = e.target.value; save(); if (key === 'title') document.querySelector('.hero h1').textContent = e.target.value || 'Nové focení'; } });
   const mapBox = h('div', { class: 'mini-map' });
   const placeInfo = h('div', { class: 'place-info' });
 
@@ -692,7 +763,7 @@ function planTab(shoot, places, save) {
     db.imageUrl(ref.imageId).then((src) => (img.src = src));
     return img;
   };
-  const poses = checklist(shoot.poses, save, { placeholder: 'přidat pózu', thumb });
+  const poses = checklist(shoot.poses, save, { placeholder: 'přidat pózu', thumb, numbered: true });
   shoot.outfit ??= [];
   const outfit = checklist(shoot.outfit, save, { placeholder: 'oblečení, boty, doplňky, make-up' });
   queueMicrotask(showPlace);
@@ -940,6 +1011,15 @@ async function placeView(id, params) {
 function settingsSheet() {
   const s = sheet('Nastavení', [
     h('h3', { class: 'sub-title' }, 'Příprava z moodboardu'),
+    (() => {
+      const g = h('div', { class: 'segmented small', role: 'group', 'aria-label': 'Kvalita přípravy' },
+        Object.entries(QUALITIES).map(([k, q]) => h('button', {
+          type: 'button', 'aria-pressed': String(getQuality() === k),
+          onclick: (e) => { setQuality(k); for (const b of g.children) b.setAttribute('aria-pressed', String(b === e.currentTarget)); note.textContent = q.note; },
+        }, q.label)));
+      const note = h('p', { class: 'muted' }, QUALITIES[getQuality()].note);
+      return [g, note];
+    })(),
     h('p', {}, getApiKey() ? 'Klíč pro Claude je uložený.' : 'Pro přípravu póz, rekvizit a míst z moodboardu je potřeba klíč pro Claude.'),
     h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn', onclick: () => { s.close(); apiKeySheet(); } }, getApiKey() ? 'Změnit klíč' : 'Zadat klíč')),
     h('h3', { class: 'sub-title' }, 'Záloha dat'),

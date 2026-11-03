@@ -1,10 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#f2ede3"/>
-  <g transform="rotate(-7 256 270)">
-    <rect x="118" y="120" width="276" height="300" fill="#fffdf8" filter="drop-shadow(0 10px 14px rgba(40,30,10,.3))"/>
-    <rect x="136" y="138" width="240" height="220" fill="#2b2925"/>
-    <circle cx="256" cy="248" r="62" fill="none" stroke="#f2ede3" stroke-width="12"/>
-    <circle cx="256" cy="248" r="26" fill="#a34a32"/>
-  </g>
-  <rect x="190" y="92" width="132" height="46" fill="#f7f6f1" opacity=".93" transform="rotate(5 256 115)"/>
+  <rect width="512" height="512" fill="#ffffff"/>
+  <rect x="96" y="96" width="320" height="320" fill="#F5F4F1"/>
+  <g transform="rotate(-5 210 250)"><rect x="132" y="150" width="150" height="196" fill="#111111"/></g>
+  <g transform="rotate(4 310 270)"><rect x="250" y="176" width="140" height="180" fill="#6B6B6B"/></g>
+  <rect x="176" y="132" width="70" height="26" fill="#ffffff" opacity=".85" transform="rotate(-8 211 145)"/>
+  <rect x="290" y="160" width="66" height="26" fill="#ffffff" opacity=".85" transform="rotate(6 323 173)"/>
 </svg>

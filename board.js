@@ -2,7 +2,7 @@
 import { aspectOf, cropRect, formatAspect, layoutCollage, seeded, tapesFor } from './layout.js';
 import { imageUrl } from './db.js';
 
-const TYPE = '"Special Elite", "American Typewriter", "Courier New", monospace';
+const TYPE = '"Inter", system-ui, sans-serif';
 
 // ---------- Textury pásky (generované jednou, stejné pro DOM i export) ----------
 
@@ -250,7 +250,7 @@ export async function renderBoardImage(shoot, { long = 2400 } = {}) {
   canvas.width = Math.round(W * S);
   canvas.height = Math.round(H * S);
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fdfdfb';
+  ctx.fillStyle = '#F5F4F1';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   for (const b of boxes) {
@@ -263,8 +263,8 @@ export async function renderBoardImage(shoot, { long = 2400 } = {}) {
     ctx.translate(b.cx * S, b.cy * S);
     ctx.rotate((b.rot * Math.PI) / 180);
     ctx.translate(-w / 2, -h / 2); // počátek v levém horním rohu fotky
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
-    ctx.shadowBlur = S * 0.012;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+    ctx.shadowBlur = S * 0.014;
     ctx.shadowOffsetY = S * 0.004;
     if (b.sticker) {
       const bw = short * 0.012 * S;
@@ -297,7 +297,7 @@ export async function renderBoardImage(shoot, { long = 2400 } = {}) {
     const L = labelBox(W, H, short);
     const text = labelText(shoot);
     ctx.save();
-    ctx.font = `${L.th * 0.42 * S}px ${TYPE}`;
+    ctx.font = `500 ${L.th * 0.4 * S}px ${TYPE}`;
     const tw = ctx.measureText(text).width + L.th * 0.9 * S;
     ctx.translate(L.x * S, L.y * S);
     ctx.rotate((L.rot * Math.PI) / 180);
@@ -305,7 +305,7 @@ export async function renderBoardImage(shoot, { long = 2400 } = {}) {
     ctx.shadowBlur = S * 0.003;
     ctx.drawImage(tex('masking', 'label').canvas, 0, (-L.th / 2) * S, tw, L.th * S);
     ctx.shadowColor = 'transparent';
-    ctx.fillStyle = '#26231f';
+    ctx.fillStyle = '#111111';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, L.th * 0.45 * S, 0);
     ctx.restore();

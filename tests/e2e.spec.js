@@ -100,11 +100,12 @@ test('focení: screenshot se ořízne na fotku a Claude z moodboardu připraví 
   expect(item.orig).toBe(true);
   expect(item.w / item.h).toBeCloseTo(300 / 380, 1);
 
-  await page.getByRole('button', { name: 'Připravit z moodboardu' }).click();
+  await page.getByRole('button', { name: 'Připravit', exact: true }).click();
   await page.getByLabel('API klíč').fill('sk-ant-test');
   await page.getByRole('button', { name: 'Uložit', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Nálada a světlo' })).toBeVisible();
-  expect(sent.model).toBe('claude-opus-5-5');
+  expect(sent.model).toBe('claude-haiku-5-5'); // výchozí je úsporný režim
+  expect(sent.fallbacks).toBeUndefined();
   expect(sent.messages[0].content.filter((c) => c.type === 'image')).toHaveLength(1);
   await expect(page.locator('.checklist .item-text').first()).toHaveValue('Zády s nápisem');
   await expect(page.locator('.pose-thumb')).toHaveCount(1);
@@ -114,4 +115,22 @@ test('focení: screenshot se ořízne na fotku a Claude z moodboardu připraví 
   const bring = await page.locator('.checklist').first().locator('.item-text').evaluateAll((els) => els.map((e) => e.value));
   expect(bring).toContain('Bílý tyl');
   expect(bring).toContain('Sehnat: jablko');
+});
+
+test('focení: odpověď z appky Claude (zdarma) se vloží a rozloží do plánu', async ({ page }) => {
+  const screen = await sharp({ create: { width: 300, height: 400, channels: 3, background: '#335577' } }).png().toBuffer();
+  await page.goto('/#/');
+  await page.getByRole('button', { name: 'Nové focení' }).click();
+  await page.getByRole('link', { name: 'Moodboard' }).click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Fotky' }).click();
+  await (await chooser).setFiles({ name: 'a.png', mimeType: 'image/png', buffer: screen });
+  await expect(page.locator('.photo')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Zdarma přes appku Claude' }).click();
+  await page.getByLabel('Odpověď od Claude').fill('```json\n{"mood":"Klidná","light":"Okno","colors":"Pastel","poses":[{"title":"U okna","how":"Opřená o rám","photo":1,"props":[]}],"outfit":["Svetr"],"props":[],"places":[],"watch":[]}\n```');
+  await page.getByRole('button', { name: 'Použít odpověď' }).click();
+  await expect(page.getByRole('heading', { name: 'Nálada a světlo' })).toBeVisible();
+  await expect(page.locator('.checklist.numbered .item-text').first()).toHaveValue('U okna');
+  await expect(page.locator('.checklist.numbered .num').first()).toHaveText('01');
+  await expect(page.locator('.pose-thumb')).toHaveCount(1);
 });
