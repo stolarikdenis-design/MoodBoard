@@ -137,3 +137,39 @@ test('focení: odpověď z appky Claude (zdarma) se vloží a rozloží do plán
   await expect(page.locator('.checklist.numbered .num').first()).toHaveText('01');
   await expect(page.locator('.pose-thumb')).toHaveCount(1);
 });
+
+test('focení: světlo v den focení, režim Na place a duplikace', async ({ page }) => {
+  await page.goto('/#/');
+  await page.evaluate(async () => {
+    const db = await import('./db.js');
+    await db.put('places', { id: 'l1', name: 'Ateliér 3xl', note: '', lat: 50.0343, lng: 15.7812, photos: [] });
+  });
+  await page.getByRole('button', { name: 'Nové focení' }).click();
+  await page.getByLabel('Název focení').fill('Světlo');
+  await page.getByLabel('Datum').fill('2026-11-02');
+  await page.getByLabel('Čas').fill('16:10');
+  await page.reload();
+  await page.getByLabel('Lokalita').selectOption('l1');
+  await expect(page.getByRole('heading', { name: 'Světlo v den focení' })).toBeVisible();
+  await expect(page.locator('.sun-note')).toHaveText('Focení padne do zlaté hodinky.');
+
+  const pose = page.locator('.checklist.numbered').locator('..').getByPlaceholder('přidat pózu');
+  await pose.fill('U okna');
+  await pose.press('Enter');
+  await pose.fill('Na schodech');
+  await pose.press('Enter');
+  await expect(page.locator('.checklist.numbered li')).toHaveCount(2);
+  await expect.poll(() => page.evaluate(async () => (await (await import('./db.js')).all('shoots')).find((s) => s.title === 'Světlo')?.poses.length)).toBe(2);
+  await page.reload();
+  await page.getByRole('button', { name: 'Na place' }).click();
+  await expect(page.locator('.onset h2')).toHaveText('U okna');
+  await expect(page.locator('.set-num')).toHaveText('01 / 02');
+  await page.getByRole('button', { name: 'Odfoceno', exact: true }).click();
+  await expect(page.locator('.onset h2')).toHaveText('Na schodech');
+  await page.getByRole('button', { name: 'Zavřít' }).click();
+  await expect(page.locator('li.done .num')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Duplikovat focení' }).click();
+  await expect(page.locator('.hero h1')).toHaveText('Světlo (kopie)');
+  await expect(page.locator('li.done')).toHaveCount(0);
+});

@@ -7,6 +7,11 @@ Plánovač focení do telefonu. Funguje jako aplikace na ploše a i bez signálu
   - **Připravit** (přímo v appce): potřebuje vlastní API klíč z platform.claude.com, zadává se v Nastavení (⋯). V Nastavení je i kvalita: **Úsporně** (Claude Haiku 5.5, asi 0,1 Kč za přípravu, výchozí) a **Nejlíp** (Claude Opus 5.5, asi 2–6 Kč). Klíč zůstane jen v telefonu, fotky se při přípravě pošlou do Anthropicu.
   - **Zdarma přes appku Claude** (v rámci předplatného): appka pošle fotky a zadání do appky Claude, odpověď zkopíruješ a vložíš zpátky.
 - **Plán:** název, model, datum a čas, lokalita s mapou, pózy, oblečení a styling, poznámky.
+- **Světlo v den focení:** podle data a lokality východ a západ slunce, zlatá a modrá hodinka a jestli do nich čas focení padne (počítá se v telefonu, bez internetu).
+- **Na place:** pózy přes celou obrazovku jedna po druhé s předlohou, popisem a tím, co hlídat. Přepíná se tažením, displej nezhasne.
+- **Poslat modelce:** termín, místo s odkazem na mapu, nálada, oblečení a obrázek moodboardu jedním sdílením.
+- **Do kalendáře:** událost s místem a připomenutím 2 hodiny předem.
+- **Duplikovat:** kopie focení jako šablona (bez data a času, seznamy neodškrtnuté).
 - **Checklist:** co si vzít s sebou (i z inventáře) a co hlídat během focení.
 - **Inventář:** props s fotkou, kategorií, počtem a poznámkou.
 - **Lokality:** uložená místa na mapě s fotkami, popisem a navigací.

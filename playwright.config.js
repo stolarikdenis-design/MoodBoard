@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: 'tests',
   testMatch: '*.spec.js',
   timeout: 30_000,
-  use: { baseURL: 'http://127.0.0.1:4300' },
+  use: { baseURL: 'http://127.0.0.1:4300', timezoneId: 'Europe/Prague', locale: 'cs-CZ' },
   projects: [
     { name: 'iphone', use: { ...devices['iPhone 13'], browserName: 'chromium' } },
     { name: 'android', use: { ...devices['Pixel 7'] } },

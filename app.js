@@ -3,6 +3,8 @@ import * as db from './db.js';
 import { mountBoard, renderBoardImage, styleOf } from './board.js';
 import { FORMATS, RATIOS, aspectOf, layoutGrid } from './layout.js';
 import { detectPhotoRect } from './autocrop.js';
+import { lightAt, sunTimes } from './sun.js';
+import { icsFor, modelMessage } from './share.js';
 import { MAX_PHOTOS, QUALITIES, errorMessage, getApiKey, getQuality, manualPrompt, parsePlanText, planFromBoard, setApiKey, setQuality, shrinkForAi } from './ai.js';
 
 const L = window.L;
@@ -39,6 +41,10 @@ const ICONS = {
   trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13',
   expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
   spark: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z',
+  copy: 'M9 9h10v10H9zM5 15V5h10',
+  play: 'M8 5l11 7-11 7z',
+  calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+  sun: 'M12 8a4 4 0 100 8 4 4 0 000-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
   shuffle: 'M4 7h3c5 0 5 10 10 10h3M4 17h3c2 0 3-1.5 4-3.5M13 9.5C14 8 15 7 17 7h3M18 4l3 3-3 3M18 14l3 3-3 3',
 };
 function icon(name) {
@@ -353,7 +359,7 @@ async function shootView(id, tab = 'moodboard') {
   setTop('Focení', {
     small: true,
     back: '#/',
-    actions: [iconBtn('trash', 'Smazat focení', () => confirmSheet('Smazat celé focení?', async () => {
+    actions: [iconBtn('copy', 'Duplikovat focení', () => duplicateShoot(shoot)), iconBtn('trash', 'Smazat focení', () => confirmSheet('Smazat celé focení?', async () => {
       for (const b of shoot.board) { await db.deleteImage(b.imageId); if (b.origId) await db.deleteImage(b.origId); }
       await db.del('shoots', shoot.id);
       location.hash = '#/';
@@ -738,7 +744,9 @@ function viewer(blob) {
 }
 
 function planTab(shoot, places, save) {
-  const input = (key, props = {}) => h('input', { value: shoot[key] ?? '', ...props, oninput: (e) => { shoot[key] = e.target.value; save(); if (key === 'title') document.querySelector('.hero h1').textContent = e.target.value || 'Nové focení'; } });
+  const lightBox = h('div', { class: 'sun' });
+  const drawLight = () => lightBox.replaceChildren(...lightRows(shoot, places.find((x) => x.id === shoot.placeId)));
+  const input = (key, props = {}) => h('input', { value: shoot[key] ?? '', ...props, oninput: (e) => { shoot[key] = e.target.value; save(); if (key === 'date' || key === 'time') drawLight(); if (key === 'title') document.querySelector('.hero h1').textContent = e.target.value || 'Nové focení'; } });
   const mapBox = h('div', { class: 'mini-map' });
   const placeInfo = h('div', { class: 'place-info' });
 
@@ -747,6 +755,7 @@ function planTab(shoot, places, save) {
     cleanup = [];
     const p = places.find((x) => x.id === shoot.placeId);
     mapBox.hidden = !p;
+    drawLight();
     placeInfo.replaceChildren();
     if (!p) return;
     const map = makeMap(mapBox, { center: [p.lat, p.lng], zoom: 15 });
@@ -802,6 +811,12 @@ function planTab(shoot, places, save) {
       field('Datum', input('date', { type: 'date' })),
       field('Čas', input('time', { type: 'time' })),
     ),
+    h('div', { class: 'plan-actions' },
+      h('button', { type: 'button', class: 'btn primary', disabled: !shoot.poses.length, onclick: () => onSet(shoot, save) }, icon('play'), 'Na place'),
+      h('button', { type: 'button', class: 'btn', onclick: () => sendToModel(shoot, places) }, icon('share'), 'Poslat modelce'),
+      h('button', { type: 'button', class: 'btn', onclick: () => addToCalendar(shoot, places) }, icon('calendar'), 'Do kalendáře'),
+    ),
+    lightBox,
     prepareCard(shoot, save),
     ai ? h('div', { class: 'brief' },
       h('h2', { class: 'section-title' }, 'Nálada a světlo'),
@@ -845,6 +860,151 @@ function propPicker(props, done) {
     ))),
     h('button', { type: 'button', class: 'btn primary wide', onclick: () => { done([...chosen].map((p) => (p.qty > 1 ? `${p.name} (${p.qty}×)` : p.name))); s.close(); } }, 'Přidat do „s sebou“'),
   ]);
+}
+
+
+// ---------- Světlo, Na place, sdílení ----------
+
+const hm = (d) => (d ? d.toLocaleTimeString('cs-CZ', { hour: 'numeric', minute: '2-digit' }) : '–');
+const span = ([a, b]) => (a && b ? `${hm(a)}–${hm(b)}` : '–');
+
+/** Řádky „Světlo v den focení“: potřebuje datum a lokalitu. */
+function lightRows(shoot, place) {
+  if (!shoot.date || !place) return [];
+  const t = sunTimes(shoot.date, place.lat, place.lng);
+  const at = lightAt(t, shoot.date, shoot.time);
+  const verdict = {
+    golden: 'Focení padne do zlaté hodinky.',
+    blue: 'Focení padne do modré hodinky.',
+    day: t.goldenEvening[0] ? `Do večerní zlaté hodinky zbývá od začátku focení ${Math.max(0, Math.round((t.goldenEvening[0] - new Date(`${shoot.date}T${shoot.time}`)) / 60000))} min.` : '',
+    night: 'Focení začíná po setmění.',
+  }[at];
+  return [
+    h('h2', { class: 'section-title' }, 'Světlo v den focení'),
+    h('dl', { class: 'sun-grid' },
+      h('div', {}, h('dt', {}, 'Východ'), h('dd', {}, hm(t.sunrise))),
+      h('div', {}, h('dt', {}, 'Západ'), h('dd', {}, hm(t.sunset))),
+      h('div', {}, h('dt', {}, 'Zlatá ráno'), h('dd', {}, span(t.goldenMorning))),
+      h('div', {}, h('dt', {}, 'Zlatá večer'), h('dd', {}, span(t.goldenEvening))),
+      h('div', {}, h('dt', {}, 'Modrá večer'), h('dd', {}, span(t.blueEvening))),
+    ),
+    verdict ? h('p', { class: `sun-note ${at}` }, verdict) : null,
+  ].filter(Boolean);
+}
+
+/** Na place: pózy přes celou obrazovku, jedna po druhé, displej nezhasne. */
+async function onSet(shoot, save) {
+  const poses = shoot.poses;
+  if (!poses.length) return;
+  let i = Math.max(0, poses.findIndex((p) => !p.done));
+  let lock = null;
+  try { lock = await navigator.wakeLock?.request('screen'); } catch { /* nepodporuje */ }
+  const urls = await Promise.all(poses.map(async (p) => {
+    const ref = shoot.board.find((b) => b.id === p.ref);
+    return ref ? db.imageUrl(ref.imageId) : '';
+  }));
+  const img = h('img', { alt: '' });
+  const num = h('span', { class: 'set-num' });
+  const title = h('h2', {});
+  const how = h('p', { class: 'set-how' });
+  const doneBtn = h('button', { type: 'button', class: 'btn primary set-done' });
+  const watch = shoot.watch.filter((w) => !w.done).map((w) => w.text);
+  const show = () => {
+    const p = poses[i];
+    img.src = urls[i] || '';
+    img.hidden = !urls[i];
+    num.textContent = `${String(i + 1).padStart(2, '0')} / ${String(poses.length).padStart(2, '0')}`;
+    title.textContent = p.text;
+    how.textContent = p.sub ?? '';
+    doneBtn.textContent = p.done ? 'Odfoceno ✓' : 'Odfoceno';
+    doneBtn.classList.toggle('is-done', !!p.done);
+  };
+  const go = (d) => { i = (i + d + poses.length) % poses.length; show(); };
+  doneBtn.addEventListener('click', async () => {
+    poses[i].done = !poses[i].done;
+    await save();
+    if (poses[i].done && poses.some((p) => !p.done)) go(1);
+    else show();
+  });
+  const close = () => { box.remove(); lock?.release?.().catch(() => {}); render(); };
+  const box = h('div', { class: 'onset', role: 'dialog', 'aria-label': 'Na place' },
+    h('div', { class: 'set-top' }, num, iconBtn('close', 'Zavřít', close)),
+    h('div', { class: 'set-photo' }, img),
+    h('div', { class: 'set-text' }, title, how,
+      watch.length ? h('p', { class: 'set-watch' }, h('span', {}, 'Hlídat: '), watch.slice(0, 3).join(' · ')) : null),
+    h('div', { class: 'set-bar' },
+      h('button', { type: 'button', class: 'btn', onclick: () => go(-1), 'aria-label': 'Předchozí póza' }, '←'),
+      doneBtn,
+      h('button', { type: 'button', class: 'btn', onclick: () => go(1), 'aria-label': 'Další póza' }, '→')),
+  );
+  // Tažení prstem doleva a doprava přepíná pózy.
+  let x0 = null;
+  box.addEventListener('touchstart', (e) => (x0 = e.touches[0].clientX), { passive: true });
+  box.addEventListener('touchend', (e) => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 60) go(dx < 0 ? 1 : -1);
+    x0 = null;
+  });
+  document.body.append(box);
+  show();
+}
+
+async function shareOrDownload({ file, text, title }) {
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], text, title }); return true; } catch (e) { if (e?.name === 'AbortError') return true; }
+  }
+  const a = h('a', { href: URL.createObjectURL(file), download: file.name });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  if (text) await navigator.clipboard?.writeText(text).then(() => toast('Text je zkopírovaný.')).catch(() => {});
+  return false;
+}
+
+async function sendToModel(shoot, places) {
+  const place = places.find((p) => p.id === shoot.placeId);
+  const text = modelMessage(shoot, place);
+  if (!shoot.board.length) {
+    if (navigator.share) return navigator.share({ text, title: shoot.title }).catch(() => {});
+    await navigator.clipboard?.writeText(text).catch(() => {});
+    return toast('Zpráva je zkopírovaná.');
+  }
+  toast('Chystám moodboard…');
+  const blob = await renderBoardImage(shoot, { long: 2000 });
+  await shareOrDownload({ file: new File([blob], 'moodboard.png', { type: 'image/png' }), text, title: shoot.title });
+}
+
+async function addToCalendar(shoot, places) {
+  const ics = icsFor(shoot, places.find((p) => p.id === shoot.placeId));
+  if (!ics) return toast('Nejdřív vyplň datum focení.');
+  const name = `foceni-${(shoot.title || 'foceni').toLowerCase().normalize('NFD').replace(/[^\w]+/g, '-')}.ics`;
+  await shareOrDownload({ file: new File([ics], name, { type: 'text/calendar' }), title: shoot.title });
+}
+
+/** Kopie focení jako šablona: plán, seznamy (neodškrtnuté) a fotky, bez data a času. */
+async function duplicateShoot(shoot) {
+  const copy = structuredClone(shoot);
+  copy.id = db.uid();
+  copy.title = `${shoot.title || 'Focení'} (kopie)`;
+  copy.date = '';
+  copy.time = '';
+  copy.created = Date.now();
+  for (const key of ['poses', 'bring', 'watch', 'outfit']) copy[key] = (copy[key] ?? []).map((i) => ({ ...i, id: db.uid(), done: false }));
+  const ids = new Map();
+  for (const b of copy.board) {
+    const oldId = b.id;
+    b.id = db.uid();
+    ids.set(oldId, b.id);
+    for (const k of ['imageId', 'origId']) {
+      if (!b[k]) continue;
+      const blob = await db.imageBlob(b[k]);
+      b[k] = blob ? await db.saveImage(blob) : b[k];
+    }
+  }
+  for (const p of copy.poses) if (p.ref) p.ref = ids.get(p.ref);
+  await db.put('shoots', copy);
+  toast('Focení zkopírované.');
+  location.hash = `#/foceni/${copy.id}/plan`;
 }
 
 // ---------- Inventář ----------
