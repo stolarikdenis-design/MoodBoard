@@ -30,7 +30,7 @@ export const formatAspect = (format) => (FORMATS[format] ?? FORMATS['16:9']).asp
  * Výřez zdroje se stejnou logikou jako CSS object-fit: cover + object-position.
  * fx, fy jsou 0..1 (0,5 = střed).
  */
-export function cropRect(imgW, imgH, aspect, fx = 0.5, fy = 0.5) {
+export function cropRect(imgW, imgH, aspect, fx = 0.5, fy = 0.5, zoom = 1) {
   const clamp = (v) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0.5));
   let sw = imgW;
   let sh = imgW / aspect;
@@ -38,7 +38,13 @@ export function cropRect(imgW, imgH, aspect, fx = 0.5, fy = 0.5) {
     sh = imgH;
     sw = imgH * aspect;
   }
-  return { sx: (imgW - sw) * clamp(fx), sy: (imgH - sh) * clamp(fy), sw, sh };
+  const sx = (imgW - sw) * clamp(fx);
+  const sy = (imgH - sh) * clamp(fy);
+  // Přiblížení kolem bodu (fx, fy), stejně jako CSS transform-origin u náhledu.
+  const z = Math.max(1, Number.isFinite(zoom) ? zoom : 1);
+  const zw = sw / z;
+  const zh = sh / z;
+  return { sx: sx + (sw - zw) * clamp(fx), sy: sy + (sh - zh) * clamp(fy), sw: zw, sh: zh };
 }
 
 /** Stabilní pseudonáhoda ze semínka. */
@@ -124,8 +130,8 @@ export function layoutCollage(items, { format = '16:9', ratio = '3:2', seed = 0 
       rot,
       z: order.indexOf(i),
       tape: TAPES[Math.floor(rnd() * TAPES.length)],
-      sticker: items.length >= 4 && rnd() < 0.14,
-      cross: rnd() < 0.08,
+      sticker: items.length >= 4 && rnd() < 0.1,
+      cross: rnd() < 0.05,
       seed: `${seed}:${item.id}`,
     };
   });

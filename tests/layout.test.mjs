@@ -20,6 +20,9 @@ test('ořez screenshotu má přesně poměr fotky a zůstane uvnitř obrázku', 
       }
     }
   }
+  const z = cropRect(1200, 1800, 2 / 3, 0.25, 0.75, 2);
+  assert.deepEqual([z.sw, z.sh], [600, 900], 'přiblížení 2× vezme polovinu');
+  assert.deepEqual([z.sx, z.sy], [150, 675], 'přiblížení drží bod výřezu na místě');
   const mid = cropRect(1170, 2532, 2 / 3);
   assert.equal(mid.sx, 0);
   assert.equal(mid.sy, (2532 - 1755) / 2, 'výchozí výřez je na střed');

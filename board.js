@@ -175,11 +175,14 @@ export function mountBoard(container, shoot, { onPick } = {}) {
       photo.type = 'button';
       photo.dataset.id = it.id;
       photo.setAttribute('aria-label', `Fotka ${i + 1}`);
-      const img = el('img', 'shot', { objectPosition: `${(it.fx ?? 0.5) * 100}% ${(it.fy ?? 0.5) * 100}%` });
+      const pos = `${(it.fx ?? 0.5) * 100}% ${(it.fy ?? 0.5) * 100}%`;
+      const img = el('img', 'shot', { objectPosition: pos, transformOrigin: pos, transform: `scale(${it.zoom ?? 1})` });
       img.alt = '';
       img.draggable = false;
       img.src = await imageUrl(it.imageId);
-      photo.append(img);
+      const clip = el('span', 'clip');
+      clip.append(img);
+      photo.append(clip);
       for (const t of tapesFor(b, short)) {
         const tape = el('img', `tape ${t.kind}`, {
           left: px(t.cx - t.len / 2), top: px(t.cy - t.th / 2), width: px(t.len), height: px(t.th),
@@ -274,7 +277,7 @@ export async function renderBoardImage(shoot, { long = 2400 } = {}) {
     }
     ctx.shadowColor = 'transparent';
     if (img) {
-      const r = cropRect(img.naturalWidth, img.naturalHeight, aspectOf(shoot.ratio, it.orient), it.fx, it.fy);
+      const r = cropRect(img.naturalWidth, img.naturalHeight, aspectOf(shoot.ratio, it.orient), it.fx, it.fy, it.zoom ?? 1);
       ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, 0, 0, w, h);
     }
     for (const t of tapesFor(b, short)) {

@@ -1,8 +1,8 @@
 // Offline režim: aplikace jde otevřít i bez signálu, prohlédnuté dlaždice mapy zůstanou v mezipaměti.
-const VERSION = 'foceni-v2';
+const VERSION = 'foceni-v3';
 const TILES = 'foceni-tiles';
 const SHELL = [
-  './', 'index.html', 'app.css', 'fonts.css', 'app.js', 'db.js', 'board.js', 'layout.js', 'manifest.json', 'icon.svg', 'icon-192.png',
+  './', 'index.html', 'app.css', 'fonts.css', 'app.js', 'db.js', 'board.js', 'layout.js', 'autocrop.js', 'ai.js', 'lib/anthropic/sdk.js', 'manifest.json', 'icon.svg', 'icon-192.png',
   'lib/leaflet/leaflet.js', 'lib/leaflet/leaflet.css',
   'lib/special-elite/special-elite-latin-400-normal.woff2', 'lib/special-elite/special-elite-latin-ext-400-normal.woff2',
 ];

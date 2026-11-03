@@ -294,3 +294,38 @@ ul.plain { margin: 0; padding-left: 18px; }
 @media (prefers-reduced-motion: reduce) {
   dialog.sheet, .toast { animation: none; }
 }
+
+/* ---------- Příprava z moodboardu, pózy, prohlížeč ---------- */
+.photo .clip { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; }
+.photo .shot { position: absolute; inset: 0; }
+.prepare {
+  position: relative; margin: 26px 0 8px; padding: 18px 16px 16px;
+  background: var(--card); box-shadow: 0 1px 2px rgba(40, 30, 10, .12), 0 8px 20px -10px rgba(40, 30, 10, .35);
+  transform: rotate(-.3deg);
+}
+.prepare::before { content: ""; position: absolute; top: -10px; left: 50%; width: 80px; height: 20px; transform: translateX(-50%) rotate(-2deg); background: rgba(247, 246, 241, .92); box-shadow: 0 1px 2px rgba(0, 0, 0, .1); }
+.prepare p { margin: 0 0 4px; font-size: 14px; color: var(--ink-2); }
+.prepare .btn.wide { margin-top: 12px; }
+.brief p { margin: 0 0 10px; }
+.brief .label, .sub-title { font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: var(--faded); }
+.sub-title { margin: 22px 0 8px; font-weight: 400; }
+.suggest { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.suggest li { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; padding: 10px 12px; background: var(--card); box-shadow: 0 1px 2px rgba(40, 30, 10, .1); }
+.suggest strong { font-weight: 400; }
+.suggest .muted { grid-column: 1; font-size: 13px; }
+.suggest .btn { grid-column: 2; grid-row: 1 / span 2; }
+.checklist li { align-items: flex-start; }
+.checklist li > input[type="checkbox"], .checklist li > .icon-btn { margin-top: 11px; }
+.checklist li > .icon-btn { margin-top: 4px; }
+.item-body { flex: 1; min-width: 0; display: grid; }
+.item-sub { min-height: 0; padding: 0 6px 10px; border: 0; background: none; font-size: 13px; line-height: 1.45; color: var(--ink-2); resize: none; field-sizing: content; }
+.pose-thumb { flex: none; width: 46px; height: 58px; margin: 6px 2px 6px 4px; object-fit: cover; box-shadow: 0 0 0 3px #fff, 0 2px 6px rgba(0, 0, 0, .25); transform: rotate(-3deg); }
+.zoom input[type="range"] { width: 100%; accent-color: var(--ink); }
+.viewer { position: fixed; inset: 0; z-index: 3000; display: grid; grid-template-rows: 1fr auto; background: #fdfdfb; }
+.viewer-pane { overflow: auto; -webkit-overflow-scrolling: touch; display: flex; }
+.viewer-pane img { display: block; flex: none; width: 100%; max-width: none; height: auto; margin: auto; }
+.viewer-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(10px + var(--safe-b)); background: var(--paper-2) var(--grain); border-top: 1px solid var(--rule); }
+.viewer-zoom { display: flex; gap: 6px; }
+.viewer-zoom button { min-width: 48px; min-height: 40px; border: 1.5px solid var(--ink); border-radius: 4px; background: none; cursor: pointer; }
+.viewer-zoom [aria-pressed="true"] { background: var(--ink); color: var(--paper-2); }
+.checklist .item-text { resize: none; field-sizing: content; line-height: 1.4; padding-top: 11px; background: none; }
